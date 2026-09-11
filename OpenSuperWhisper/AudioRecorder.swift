@@ -23,6 +23,12 @@ class AudioRecorder: NSObject, ObservableObject {
     private let workQueue = DispatchQueue(label: "com.opensuperwhisper.audiorecorder")
     
     private var recordingSession: PCMRecordingSession?
+    // stopRecording() detaches `recordingSession` immediately (for UI
+    // responsiveness / the tail-capture window) but defers the actual
+    // engine.stop()+removeTap by `stopTailDuration`. This group tracks that
+    // deferred teardown so a new session can wait for the hardware input to
+    // actually be released before claiming it again.
+    private let teardownGroup = DispatchGroup()
     private var audioPlayer: AVAudioPlayer?
     private var notificationSound: NSSound?
     private let temporaryDirectory: URL
@@ -141,7 +147,7 @@ class AudioRecorder: NSObject, ObservableObject {
         notificationSound = sound
     }
     
-    func startRecording(sessionID: UUID = UUID()) {
+    func startRecording(sessionID: UUID = UUID(), onLiveBuffer: ((AVAudioPCMBuffer) -> Void)? = nil) {
         // Everything below costs CoreAudio HAL round-trips (device queries,
         // AudioQueue start for the notification sound) — 20-35 ms that used to
         // block the main thread right when the indicator appear animation
@@ -153,7 +159,7 @@ class AudioRecorder: NSObject, ObservableObject {
                 self.failStart(sessionID: sessionID, message: "No audio input is available.")
                 return
             }
-            
+
             guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
                 self.failStart(sessionID: sessionID, message: "Microphone access is not granted. Enable it in System Settings.")
                 return
@@ -161,21 +167,40 @@ class AudioRecorder: NSObject, ObservableObject {
             if playSound {
                 self.playNotificationSound()
             }
-            
+
             let requiresConnection = MicrophoneService.shared.isActiveMicrophoneRequiresConnection()
             self.updateRecordingState(isRecording: false, isConnecting: requiresConnection)
-            self.performStart(activeMic: activeMic, monitorConnection: requiresConnection, sessionID: sessionID)
+            self.performStart(activeMic: activeMic, monitorConnection: requiresConnection, sessionID: sessionID, onLiveBuffer: onLiveBuffer)
         }
     }
-    
-    private func performStart(activeMic: MicrophoneService.AudioDevice?, monitorConnection: Bool, sessionID: UUID) {
+
+    private func performStart(
+        activeMic: MicrophoneService.AudioDevice?,
+        monitorConnection: Bool,
+        sessionID: UUID,
+        onLiveBuffer: ((AVAudioPCMBuffer) -> Void)? = nil
+    ) {
         guard recordingSession == nil else { return }
-        
+
+        // A prior stopRecording() may still be waiting out its tail-capture
+        // window: its `recordingSession` is already nil, but the hardware input
+        // tap isn't released until that deferred finish() runs. Starting a new
+        // AVAudioEngine before that happens corrupts CoreAudio's negotiated
+        // input format ("Input HW format is invalid"). Check non-blockingly
+        // (`.now()` never actually waits) and retry once the teardown clears,
+        // instead of blocking this serial queue and deadlocking against it.
+        if teardownGroup.wait(timeout: .now()) == .timedOut {
+            teardownGroup.notify(queue: workQueue) { [weak self] in
+                self?.performStart(activeMic: activeMic, monitorConnection: monitorConnection, sessionID: sessionID, onLiveBuffer: onLiveBuffer)
+            }
+            return
+        }
+
         let fileURL = temporaryDirectory.appendingPathComponent("\(UUID().uuidString).wav")
         currentRecordingURL = fileURL
-        
+
         print("start record file to \(fileURL)")
-        
+
         var channelCount = 1
         #if os(macOS)
         if let activeMic = activeMic {
@@ -184,15 +209,15 @@ class AudioRecorder: NSObject, ObservableObject {
             print("Recording with \(channelCount) input channel(s) from \(activeMic.displayName)")
         }
         #endif
-        
+
         do {
-            let session = try PCMRecordingSession(url: fileURL) { [weak self] error in
+            let session = try PCMRecordingSession(url: fileURL, onFailure: { [weak self] error in
                 self?.workQueue.async {
                     guard let self, self.currentRecordingURL == fileURL else { return }
                     _ = self.performStop(discard: false)
                     self.failStart(sessionID: sessionID, message: error.localizedDescription)
                 }
-            }
+            }, onLiveBuffer: onLiveBuffer)
             recordingSession = session
             try session.start()
             Task { @MainActor in
@@ -237,7 +262,9 @@ class AudioRecorder: NSObject, ObservableObject {
                 self.stopConnectionMonitoring()
                 self.updateRecordingState(isRecording: false, isConnecting: false)
                 
+                self.teardownGroup.enter()
                 self.workQueue.asyncAfter(deadline: .now() + Self.stopTailDuration) {
+                    defer { self.teardownGroup.leave() }
                     let recording: RecordedAudio?
                     do { recording = try recorder.finish() }
                     catch {

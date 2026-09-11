@@ -77,6 +77,13 @@ class TranscriptionService: ObservableObject {
         await task.value
     }
 
+    /// Live-preview streaming support: exposes the already-loaded Whisper context so
+    /// a second, independent decoding state can run short-chunk decodes without
+    /// loading a second model. `nil` when the active batch engine isn't Whisper (e.g.
+    /// the user has selected Parakeet/FluidAudio) — live preview must never load a
+    /// second model just to satisfy this, so it simply has nothing to attach to.
+    var whisperEngineForLivePreview: WhisperEngine? { currentEngine as? WhisperEngine }
+
     func prepareForRecording() {
         guard !isShuttingDown, !isLoading, transcriptionTask == nil, recordingPreparation == nil,
               let engine = currentEngine as? WhisperEngine else { return }
