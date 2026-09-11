@@ -129,9 +129,15 @@ final class PCMRecordingSession {
     private let writer: PCMRecordingWriter
     private var failure: Error?
     private let onFailure: (Error) -> Void
+    private let onLiveBuffer: ((AVAudioPCMBuffer) -> Void)?
 
-    init(url: URL, onFailure: @escaping (Error) -> Void = { _ in }) throws {
+    init(
+        url: URL,
+        onFailure: @escaping (Error) -> Void = { _ in },
+        onLiveBuffer: ((AVAudioPCMBuffer) -> Void)? = nil
+    ) throws {
         self.onFailure = onFailure
+        self.onLiveBuffer = onLiveBuffer
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         writer = try PCMRecordingWriter(url: url, inputFormat: format)
@@ -147,6 +153,10 @@ final class PCMRecordingSession {
             for index in source.indices {
                 memcpy(destination[index].mData!, source[index].mData!, Int(source[index].mDataByteSize))
             }
+            // Fan out the same immutable copy to the live-preview consumer before
+            // handing it to the writer queue: both only ever read it, so no second
+            // copy or synchronization is needed between the two consumers.
+            self.onLiveBuffer?(copy)
             self.queue.async {
                 guard self.failure == nil else { return }
                 do { try self.writer.append(copy) }

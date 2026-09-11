@@ -27,6 +27,7 @@ class IndicatorViewModel: ObservableObject {
     @Published var isBlinking = false
     @Published var isConfirmingCancel = false
     @Published var recorder: AudioRecorder = .shared
+    @Published var livePreviewText: String?
     
     var recordingStartedAt: Date?
     
@@ -95,6 +96,19 @@ class IndicatorViewModel: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        AudioTranscriptionManager.shared.$partialText
+            .receive(on: RunLoop.main)
+            .sink { [weak self] text in
+                guard let self, let id = self.recordingSessionID,
+                      RecordingSessionController.shared.currentID == id else {
+                    print("[LivePreview][diag] IndicatorViewModel sink dropped update (no matching active session): \"\(text ?? "nil")\"")
+                    return
+                }
+                print("[LivePreview][diag] IndicatorViewModel.livePreviewText <- \"\(text ?? "nil")\"")
+                self.livePreviewText = text
+            }
+            .store(in: &cancellables)
     }
     
     var isTranscriptionBusy: Bool {
@@ -118,11 +132,15 @@ class IndicatorViewModel: ObservableObject {
     }
 
     func resetAfterRecordingFailure() {
+        if let id = recordingSessionID {
+            AudioTranscriptionManager.shared.stopLivePreview(sessionID: id)
+        }
         RecordingSessionController.shared.finish(recordingSessionID)
         recordingSessionID = nil
         state = .idle
         stopBlinking()
         recordingStartedAt = nil
+        livePreviewText = nil
         resetCancelConfirmation()
         _ = delegate?.didFinishDecoding(from: self)
     }
@@ -150,8 +168,12 @@ class IndicatorViewModel: ObservableObject {
         state = .recording
         startBlinking()
         recordingStartedAt = Date()
-        
-        recorder.startRecording(sessionID: id)
+        livePreviewText = nil
+
+        recorder.startRecording(sessionID: id, onLiveBuffer: { buffer in
+            AudioTranscriptionManager.shared.appendLiveAudio(buffer, sessionID: id)
+        })
+        AudioTranscriptionManager.shared.startLivePreview(sessionID: id)
     }
     
     func handleCancelRequest() -> Bool {
@@ -195,7 +217,11 @@ class IndicatorViewModel: ObservableObject {
         
         resetCancelConfirmation()
         stopBlinking()
-        
+        if let id = recordingSessionID {
+            AudioTranscriptionManager.shared.stopLivePreview(sessionID: id)
+        }
+        livePreviewText = nil
+
         if isTranscriptionBusy {
             // The engine is busy with another transcription: keep the user's audio
             // and put it into the queue instead of deleting it.
@@ -394,6 +420,9 @@ class IndicatorViewModel: ObservableObject {
         if state != .decoding {
             cancelAudioRecordingOperation()
         }
+        if let id = recordingSessionID {
+            AudioTranscriptionManager.shared.stopLivePreview(sessionID: id)
+        }
         RecordingSessionController.shared.finish(recordingSessionID)
         recordingSessionID = nil
     }
@@ -489,8 +518,10 @@ struct IndicatorWindow: View {
                             .foregroundColor(.orange)
                             .transition(.opacity)
                     } else {
-                        Text("Recording...")
+                        Text(viewModel.livePreviewText ?? "Recording...")
                             .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                            .truncationMode(.head)
                             .transition(.opacity)
                     }
                 }

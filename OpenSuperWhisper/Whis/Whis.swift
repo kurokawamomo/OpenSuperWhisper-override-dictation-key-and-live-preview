@@ -705,7 +705,54 @@ public class MyWhisperContext {
         
         return result == 0
     }
-    
+
+    // MARK: - Secondary state (live-preview streaming)
+    // A second, independent decoding state on the SAME already-loaded context: the
+    // model weights (`ctx`) are not duplicated, only a lightweight `whisper_state` is
+    // allocated. This lets a live-preview loop run its own repeated short-chunk
+    // decodes without touching (or being blocked by) the batch path's `state` ivar.
+
+    public func makeSecondaryState() -> OpaquePointer? {
+        guard let ctx else { return nil }
+        return whisper_init_state(ctx)
+    }
+
+    public func freeSecondaryState(_ state: OpaquePointer) {
+        whisper_free_state(state)
+    }
+
+    public func full(samples: [Float], params: inout whisper_full_params, state: OpaquePointer) -> Bool {
+        guard let ctx else { return false }
+        let result = samples.withUnsafeBufferPointer { buffer in
+            let result = whisper_full_with_state(ctx, state, params, buffer.baseAddress, Int32(samples.count))
+
+            // Free c-allocated strings
+            if let suppressRegex = params.suppress_regex {
+                free(UnsafeMutablePointer(mutating: suppressRegex))
+            }
+            if let initialPrompt = params.initial_prompt {
+                free(UnsafeMutablePointer(mutating: initialPrompt))
+            }
+            if let language = params.language {
+                free(UnsafeMutablePointer(mutating: language))
+            }
+            if let baseAddress = params.grammar_rules {
+                free(UnsafeMutableRawPointer(mutating: baseAddress))
+            }
+            return result
+        }
+        return result == 0
+    }
+
+    public func fullNSegments(state: OpaquePointer) -> Int {
+        Int(whisper_full_n_segments_from_state(state))
+    }
+
+    public func fullGetSegmentText(state: OpaquePointer, iSegment: Int) -> String? {
+        guard let cStr = whisper_full_get_segment_text_from_state(state, Int32(iSegment)) else { return nil }
+        return String(cString: cStr)
+    }
+
     public func fullParallel(samples: [Float], params: inout WhisperFullParams, nProcessors: Int) -> Bool {
         guard let ctx = ctx else { return false }
         let cParams = params.toC()

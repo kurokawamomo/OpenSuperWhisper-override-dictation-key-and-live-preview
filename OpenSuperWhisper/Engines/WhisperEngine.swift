@@ -76,6 +76,10 @@ class WhisperEngine: TranscriptionEngine {
 
     var hasPreparedState: Bool { context?.hasState == true }
 
+    /// Live-preview streaming support: the already-loaded context (model weights),
+    /// shared read-only with a live-preview engine's own secondary decoding state.
+    var contextForLivePreview: MyWhisperContext? { context }
+
     func prepareForRecording() throws {
         guard let context else {
             throw TranscriptionError.contextInitializationFailed

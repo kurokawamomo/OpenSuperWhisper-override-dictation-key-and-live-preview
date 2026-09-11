@@ -138,4 +138,27 @@ final class AppPreferences {
 
     @UserDefault(key: "autoDeleteRecordingsAfterDays", defaultValue: 30)
     var autoDeleteRecordingsAfterDays: Int
+
+    // Live transcription preview (recording indicator)
+    @UserDefault(key: "livePreviewEnabled", defaultValue: false)
+    var livePreviewEnabled: Bool
+
+    @UserDefault(key: "livePreviewEngine", defaultValue: "apple")
+    var livePreviewEngine: String
+
+    // Tap-to-Siri / Hold-to-Whisper mode
+    @UserDefault(key: "tapHoldModeEnabled", defaultValue: false)
+    var tapHoldModeEnabled: Bool
+
+    @UserDefault(key: "tapHoldTriggerKey", defaultValue: "f5Dictation")
+    var tapHoldTriggerKey: String
+
+    @UserDefault(key: "tapHoldThresholdMs", defaultValue: 300.0)
+    var tapHoldThresholdMs: Double
+
+    @UserDefault(key: "tapAction", defaultValue: "launchSiri")
+    var tapAction: String
+
+    @UserDefault(key: "tapActionCustomScriptPath", defaultValue: "")
+    var tapActionCustomScriptPath: String
 }
