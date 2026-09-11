@@ -197,6 +197,51 @@ class SettingsViewModel: ObservableObject {
         }
     }
 
+    @Published var livePreviewEnabled: Bool {
+        didSet {
+            AppPreferences.shared.livePreviewEnabled = livePreviewEnabled
+        }
+    }
+
+    @Published var livePreviewEngine: String {
+        didSet {
+            AppPreferences.shared.livePreviewEngine = livePreviewEngine
+        }
+    }
+
+    @Published var tapHoldModeEnabled: Bool {
+        didSet {
+            AppPreferences.shared.tapHoldModeEnabled = tapHoldModeEnabled
+            NotificationCenter.default.post(name: .hotkeySettingsChanged, object: nil)
+        }
+    }
+
+    @Published var tapHoldTriggerKey: TapHoldTriggerKey {
+        didSet {
+            AppPreferences.shared.tapHoldTriggerKey = tapHoldTriggerKey.rawValue
+            NotificationCenter.default.post(name: .hotkeySettingsChanged, object: nil)
+        }
+    }
+
+    @Published var tapHoldThresholdMs: Double {
+        didSet {
+            AppPreferences.shared.tapHoldThresholdMs = tapHoldThresholdMs
+            NotificationCenter.default.post(name: .hotkeySettingsChanged, object: nil)
+        }
+    }
+
+    @Published var tapAction: TapAction {
+        didSet {
+            AppPreferences.shared.tapAction = tapAction.rawValue
+        }
+    }
+
+    @Published var tapActionCustomScriptPath: String {
+        didSet {
+            AppPreferences.shared.tapActionCustomScriptPath = tapActionCustomScriptPath
+        }
+    }
+
     private let downloadWhisper: (URL, String, @escaping (Double) -> Void) async throws -> Void
 
     private let downloadFluid: (AsrModelVersion, ProgressHandler?) async throws -> AsrModels
@@ -230,6 +275,13 @@ class SettingsViewModel: ObservableObject {
         self.addSpaceAfterSentence = prefs.addSpaceAfterSentence
         self.autoCopyToClipboard = prefs.autoCopyToClipboard
         self.autoPasteTranscription = prefs.autoPasteTranscription
+        self.livePreviewEnabled = prefs.livePreviewEnabled
+        self.livePreviewEngine = prefs.livePreviewEngine
+        self.tapHoldModeEnabled = prefs.tapHoldModeEnabled
+        self.tapHoldTriggerKey = TapHoldTriggerKey(rawValue: prefs.tapHoldTriggerKey) ?? .f5Dictation
+        self.tapHoldThresholdMs = prefs.tapHoldThresholdMs
+        self.tapAction = TapAction(rawValue: prefs.tapAction) ?? .launchSiri
+        self.tapActionCustomScriptPath = prefs.tapActionCustomScriptPath
 
         if let savedPath = prefs.selectedWhisperModelPath ?? prefs.selectedModelPath {
             self.selectedModelURL = URL(fileURLWithPath: savedPath)
@@ -1007,6 +1059,46 @@ struct SettingsView: View {
                 .background(Color(.controlBackgroundColor).opacity(0.3))
                 .cornerRadius(12)
 
+                // Live Transcription Preview
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Live Transcription Preview")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Show Live Transcription Preview")
+                                    .font(.subheadline)
+                                Text("Replaces \"Recording...\" in the recording indicator with a live partial transcript")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $viewModel.livePreviewEnabled)
+                                .toggleStyle(SwitchToggleStyle(tint: Color.accentColor))
+                                .labelsHidden()
+                        }
+
+                        HStack {
+                            Text("Preview Engine")
+                                .font(.subheadline)
+                            Spacer()
+                            Picker("", selection: $viewModel.livePreviewEngine) {
+                                Text("Apple On-Device SpeechRecognizer").tag("apple")
+                                Text("Whisper Partial Buffer Streaming").tag("whisper")
+                            }
+                            .pickerStyle(.menu)
+                            .frame(width: 260)
+                            .disabled(!viewModel.livePreviewEnabled)
+                        }
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.controlBackgroundColor).opacity(0.3))
+                .cornerRadius(12)
+
                 // Initial Prompt
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Initial Prompt")
@@ -1382,6 +1474,107 @@ struct SettingsView: View {
                             Toggle("", isOn: $viewModel.escCancelWithoutConfirmation)
                                 .toggleStyle(SwitchToggleStyle(tint: Color.accentColor))
                                 .labelsHidden()
+                        }
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.controlBackgroundColor).opacity(0.3))
+                .cornerRadius(12)
+
+                // Tap-to-Siri / Hold-to-Whisper
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Tap-to-Siri / Hold-to-Whisper")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Enable Tap-to-Siri / Hold-to-Whisper Mode")
+                                    .font(.subheadline)
+                                Text("Tap the trigger key to run the tap action, hold it to record")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $viewModel.tapHoldModeEnabled)
+                                .toggleStyle(SwitchToggleStyle(tint: Color.accentColor))
+                                .labelsHidden()
+                        }
+
+                        if viewModel.tapHoldModeEnabled {
+                            HStack {
+                                Text("Trigger Key")
+                                    .font(.subheadline)
+                                Spacer()
+                                Picker("", selection: $viewModel.tapHoldTriggerKey) {
+                                    ForEach(TapHoldTriggerKey.allCases) { key in
+                                        Text(key.displayName).tag(key)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .frame(width: 200)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color(.textBackgroundColor).opacity(0.5))
+                            .cornerRadius(8)
+
+                            permissionWarning(
+                                message: "⚠️ This mode requires Accessibility permission so the trigger key can be detected globally.",
+                                isGranted: permissionsManager.isAccessibilityPermissionGranted
+                            ) {
+                                permissionsManager.requestAccessibilityPermissionOrOpenSystemPreferences()
+                            }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("Hold Threshold:")
+                                        .font(.subheadline)
+                                    Spacer()
+                                    Text("\(Int(viewModel.tapHoldThresholdMs)) ms")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Slider(value: $viewModel.tapHoldThresholdMs, in: 200...1000, step: 50)
+                                    .help("Press longer than this to start recording instead of running the tap action")
+                            }
+
+                            HStack {
+                                Text("Tap Action")
+                                    .font(.subheadline)
+                                Spacer()
+                                Picker("", selection: $viewModel.tapAction) {
+                                    ForEach(TapAction.allCases) { action in
+                                        Text(action.displayName).tag(action)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .frame(width: 200)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color(.textBackgroundColor).opacity(0.5))
+                            .cornerRadius(8)
+
+                            if viewModel.tapAction == .customScript {
+                                HStack {
+                                    TextField("Script path", text: $viewModel.tapActionCustomScriptPath)
+                                        .textFieldStyle(.roundedBorder)
+                                    Button("Browse…") {
+                                        let panel = NSOpenPanel()
+                                        panel.canChooseFiles = true
+                                        panel.canChooseDirectories = false
+                                        panel.allowsMultipleSelection = false
+                                        if panel.runModal() == .OK, let url = panel.url {
+                                            viewModel.tapActionCustomScriptPath = url.path
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
                         }
                     }
                 }
