@@ -651,43 +651,6 @@ struct SettingsDownloadableModels {
             description: "Hebrew fine-tune of Turbo V3 by ivrit.ai. Sets the language to Hebrew.",
             filename: "ggml-ivrit-large-v3-turbo.bin",
             preferredLanguage: "he"
-        ),
-        // Kotoba-Whisper is distilled from Whisper with only a Japanese decoder
-        // token wired in: whisper.cpp must always be run with -l ja for these
-        // models, even to transcribe English audio with the bilingual variant
-        // (see the model cards' usage examples). `preferredLanguage: "ja"`
-        // forces that the same way the existing Hebrew fine-tune above does.
-        SettingsDownloadableModel(
-            name: "Kotoba v2.0 large",
-            isDownloaded: false,
-            url: URL(string: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0.bin?download=true")!,
-            size: 1519,
-            description: "Japanese-specialized distilled Whisper (kotoba-tech). Sets the language to Japanese.",
-            preferredLanguage: "ja"
-        ),
-        SettingsDownloadableModel(
-            name: "Kotoba v2.0 small",
-            isDownloaded: false,
-            url: URL(string: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin?download=true")!,
-            size: 537,
-            description: "Faster, quantized Kotoba v2.0. Sets the language to Japanese.",
-            preferredLanguage: "ja"
-        ),
-        SettingsDownloadableModel(
-            name: "Kotoba Bilingual v1.0 large",
-            isDownloaded: false,
-            url: URL(string: "https://huggingface.co/kotoba-tech/kotoba-whisper-bilingual-v1.0-ggml/resolve/main/ggml-kotoba-whisper-bilingual-v1.0.bin?download=true")!,
-            size: 1519,
-            description: "Japanese/English bilingual distilled Whisper (kotoba-tech). Sets the language to Japanese.",
-            preferredLanguage: "ja"
-        ),
-        SettingsDownloadableModel(
-            name: "Kotoba Bilingual v1.0 small",
-            isDownloaded: false,
-            url: URL(string: "https://huggingface.co/kotoba-tech/kotoba-whisper-bilingual-v1.0-ggml/resolve/main/ggml-kotoba-whisper-bilingual-v1.0-q5_0.bin?download=true")!,
-            size: 537,
-            description: "Faster, quantized Kotoba Bilingual v1.0. Sets the language to Japanese.",
-            preferredLanguage: "ja"
         )
     ]
 
