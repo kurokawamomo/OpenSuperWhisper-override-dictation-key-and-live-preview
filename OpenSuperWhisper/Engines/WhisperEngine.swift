@@ -211,14 +211,17 @@ class WhisperEngine: TranscriptionEngine {
         
         let nThreads = max(2, min(ProcessInfo.processInfo.activeProcessorCount, 8))
         
-        let initialPromptTokenCount = settings.initialPrompt.isEmpty
+        let modelFilename = modelPath.map { URL(fileURLWithPath: $0).lastPathComponent }
+        let usesInitialPrompt = modelFilename.map(SettingsDownloadableModels.usesInitialPrompt(forFilename:)) ?? true
+        let initialPromptTokenCount = !usesInitialPrompt || settings.initialPrompt.isEmpty
             ? 0
             : context.tokenCount(text: settings.initialPrompt)
         var params = Self.makeFullParams(
             settings: settings,
             nThreads: nThreads,
             modelTextContext: context.nTextCtx,
-            initialPromptTokenCount: initialPromptTokenCount
+            initialPromptTokenCount: initialPromptTokenCount,
+            usesInitialPrompt: usesInitialPrompt
         )
         
         typealias GGMLAbortCallback = @convention(c) (UnsafeMutableRawPointer?) -> Bool
@@ -333,7 +336,8 @@ class WhisperEngine: TranscriptionEngine {
         settings: Settings,
         nThreads: Int,
         modelTextContext: Int,
-        initialPromptTokenCount: Int
+        initialPromptTokenCount: Int,
+        usesInitialPrompt: Bool = true
     ) -> WhisperFullParams {
         var params = WhisperFullParams()
         params.strategy = settings.useBeamSearch ? .beamSearch : .greedy
@@ -355,9 +359,9 @@ class WhisperEngine: TranscriptionEngine {
         params.detectLanguage = false
         params.temperature = Float(settings.temperature)
         params.noSpeechThold = Float(settings.noSpeechThreshold)
-        params.initialPrompt = settings.initialPrompt.isEmpty
-            ? nil
-            : settings.initialPrompt
+        params.initialPrompt = (usesInitialPrompt && !settings.initialPrompt.isEmpty)
+            ? settings.initialPrompt
+            : nil
 
         // A very long static prompt can otherwise consume the entire prompt
         // budget on every window and evict prompt_past. Carry it only while at

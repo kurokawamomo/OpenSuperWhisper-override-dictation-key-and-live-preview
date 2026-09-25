@@ -599,6 +599,7 @@ struct SettingsDownloadableModel: Identifiable {
     var downloadProgress: Double = 0.0
     let filename: String
     let preferredLanguage: String?
+    let usesInitialPrompt: Bool
 
     var sizeString: String {
         formatModelSize(megabytes: size)
@@ -609,7 +610,7 @@ struct SettingsDownloadableModel: Identifiable {
     }
 
     init(name: String, isDownloaded: Bool, url: URL, size: Int, description: String,
-         filename: String? = nil, preferredLanguage: String? = nil) {
+         filename: String? = nil, preferredLanguage: String? = nil, usesInitialPrompt: Bool = true) {
         self.name = name
         self.isDownloaded = isDownloaded
         self.url = url
@@ -617,6 +618,7 @@ struct SettingsDownloadableModel: Identifiable {
         self.description = description
         self.filename = filename ?? url.lastPathComponent
         self.preferredLanguage = preferredLanguage
+        self.usesInitialPrompt = usesInitialPrompt
     }
 }
 
@@ -657,42 +659,56 @@ struct SettingsDownloadableModels {
         // models, even to transcribe English audio with the bilingual variant
         // (see the model cards' usage examples). `preferredLanguage: "ja"`
         // forces that the same way the existing Hebrew fine-tune above does.
+        // `usesInitialPrompt: false`: the distilled 2-layer decoder has far less
+        // capacity to condition on an initial_prompt than a full-size model —
+        // a long prompt (fine for Turbo) collapses kotoba's output into token
+        // repetition or near-empty text (reproduced via whisper-cli directly).
         SettingsDownloadableModel(
             name: "Kotoba v2.0 large",
             isDownloaded: false,
             url: URL(string: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0.bin?download=true")!,
             size: 1519,
-            description: "Japanese-specialized distilled Whisper (kotoba-tech). Sets the language to Japanese.",
-            preferredLanguage: "ja"
+            description: "Japanese-specialized distilled Whisper (kotoba-tech). Sets the language to Japanese. Does not use the initial prompt.",
+            preferredLanguage: "ja",
+            usesInitialPrompt: false
         ),
         SettingsDownloadableModel(
             name: "Kotoba v2.0 small",
             isDownloaded: false,
             url: URL(string: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin?download=true")!,
             size: 537,
-            description: "Faster, quantized Kotoba v2.0. Sets the language to Japanese.",
-            preferredLanguage: "ja"
+            description: "Faster, quantized Kotoba v2.0. Sets the language to Japanese. Does not use the initial prompt.",
+            preferredLanguage: "ja",
+            usesInitialPrompt: false
         ),
         SettingsDownloadableModel(
             name: "Kotoba Bilingual v1.0 large",
             isDownloaded: false,
             url: URL(string: "https://huggingface.co/kotoba-tech/kotoba-whisper-bilingual-v1.0-ggml/resolve/main/ggml-kotoba-whisper-bilingual-v1.0.bin?download=true")!,
             size: 1519,
-            description: "Japanese/English bilingual distilled Whisper (kotoba-tech). Sets the language to Japanese.",
-            preferredLanguage: "ja"
+            description: "Japanese/English bilingual distilled Whisper (kotoba-tech). Sets the language to Japanese. Does not use the initial prompt.",
+            preferredLanguage: "ja",
+            usesInitialPrompt: false
         ),
         SettingsDownloadableModel(
             name: "Kotoba Bilingual v1.0 small",
             isDownloaded: false,
             url: URL(string: "https://huggingface.co/kotoba-tech/kotoba-whisper-bilingual-v1.0-ggml/resolve/main/ggml-kotoba-whisper-bilingual-v1.0-q5_0.bin?download=true")!,
             size: 537,
-            description: "Faster, quantized Kotoba Bilingual v1.0. Sets the language to Japanese.",
-            preferredLanguage: "ja"
+            description: "Faster, quantized Kotoba Bilingual v1.0. Sets the language to Japanese. Does not use the initial prompt.",
+            preferredLanguage: "ja",
+            usesInitialPrompt: false
         )
     ]
 
     static func preferredLanguage(forFilename filename: String) -> String? {
         availableModels.first { $0.filename == filename }?.preferredLanguage
+    }
+
+    /// Defaults to `true` (existing behavior) for models not in this catalog,
+    /// e.g. a manually-placed model file.
+    static func usesInitialPrompt(forFilename filename: String) -> Bool {
+        availableModels.first { $0.filename == filename }?.usesInitialPrompt ?? true
     }
 
     static func isVisible(_ model: SettingsDownloadableModel,
